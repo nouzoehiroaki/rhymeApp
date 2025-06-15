@@ -3,6 +3,8 @@ import OpenAI from 'openai'
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const body = await readBody(event)
+  const { word } = await readBody(event)
+
   
   if (!body.word) {
     throw createError({
@@ -24,34 +26,53 @@ export default defineEventHandler(async (event) => {
     })
 
     const prompt = `
-次の日本語の単語と韻を踏む（音が似ている）日本語の言葉を5つ提案してください。
-提案する言葉は実在する日本語の単語で、元の言葉とは異なる意味を持つものにしてください。
+あなたは日本語の「韻」(子音＋母音パターンの完全一致) を専門とする言語学者 AI です。
 
-元の言葉: "${body.word}"
+◆タスク
+与えられたひらがな語 (元語) と **同じ文字数** で
+**各文字の子音＋母音並びが完全に一致** する、
+辞書に載る一般的な日本語 (固有名詞・造語・当て字不可)を10個提案してください。
 
+◆厳密ルール
+1. 元語と **同じ文字数** であること。
+2. 各文字の **子音＋母音の組み合わせ** がすべて一致していること  
+   例: さけのみ (S-A, K-E, N-O, M-I) → かけこみ (K-A, K-E, K-O, M-I)
+3. **辞書に存在する一般名詞・動詞・形容詞** に限る。俗語・固有名詞・造語は不可。
+4. 韻説明は1行で簡潔に。
+5.同じ言葉は表示しない
+6.同じ発音の言葉は対象外
+7.辞書に存在しない言葉は対象外
 回答形式:
-1. [提案する言葉] - [簡潔な意味説明]
-2. [提案する言葉] - [簡潔な意味説明]
-...
+[提案する言葉] - [簡潔な意味説明]
 
-韻の踏み方の説明も簡潔に含めてください。
     `
 
+    // const completion = await openai.chat.completions.create({
+    //   model: 'gpt-4o-mini',
+    //   messages: [
+    //     {
+    //       role: 'system',
+    //       content: 'さけのみたてこみのように子音から母音まで一致させた意味ある言葉を提案して'
+    //     },
+    //     {
+    //       role: 'user',
+    //       content: prompt
+    //     }
+    //   ],
+    //   max_tokens: 800,
+    //   temperature: 0.7
+    // })
+
     const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o-mini',   // or gpt-4o
       messages: [
-        {
-          role: 'system',
-          content: 'さけのみたてこみのように子音から母音まで一致させた意味ある言葉を提案して'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
+        { role: 'system', content: prompt },
+        { role: 'user',   content: word }
       ],
-      max_tokens: 800,
-      temperature: 0.7
+      temperature: 0.25,
+      max_tokens: 512
     })
+
 
     const response = completion.choices[0]?.message?.content
 
@@ -94,3 +115,48 @@ export default defineEventHandler(async (event) => {
     })
   }
 })
+
+
+// export default defineEventHandler(async (event) => {
+//   const { openaiApiKey } = useRuntimeConfig()
+//   const { word } = await readBody(event)
+
+//   if (!word) throw createError({ statusCode: 400, statusMessage: '韻を踏む元の言葉が必要です。' })
+//   if (!openaiApiKey) throw createError({ statusCode: 500, statusMessage: 'OpenAI APIキー未設定' })
+
+//      const prompt = `
+// あなたは日本語の「韻」(子音＋母音パターンの完全一致) を専門とする言語学者 AI です。
+
+// ◆タスク
+// 与えられたひらがな語 (元語) と **同じ文字数** で
+// **各文字の子音＋母音並びが完全に一致** する、
+// 辞書に載る一般的な日本語 (固有名詞・造語・当て字不可)を提案してください。
+
+// ◆厳密ルール
+// 1. 元語と **同じ文字数** であること。
+// 2. 各文字の **子音＋母音の組み合わせ** がすべて一致していること  
+//    例: さけのみ (S-A, K-E, N-O, M-I) → かけこみ (K-A, K-E, K-O, M-I)
+// 3. **辞書に存在する一般名詞・動詞・形容詞** に限る。俗語・固有名詞・造語は不可。
+// 4. 韻説明は1行で簡潔に。
+// 5.同じ言葉は表示しない
+// 回答形式:
+// 1. [提案する言葉] - [簡潔な意味説明]
+// 2. [提案する言葉] - [簡潔な意味説明]
+//     `
+
+//   const openai = new OpenAI({ apiKey: openaiApiKey })
+
+//   const completion = await openai.chat.completions.create({
+//     model: 'gpt-4o-mini',   // or gpt-4o
+//     messages: [
+//       { role: 'system', content: prompt },
+//       { role: 'user',   content: word }
+//     ],
+//     temperature: 0.25,
+//     max_tokens: 512
+//   })
+
+//   const json = JSON.parse(completion.choices[0].message.content ?? '{}')
+
+//   return { success: true, data: json, timestamp: new Date().toISOString() }
+// })
